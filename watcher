@@ -13,6 +13,7 @@
 
 require __DIR__.'/vendor/autoload.php';
 
+
 /*
 |--------------------------------------------------------------------------
 | Resource Watcher Dependencies
@@ -24,9 +25,21 @@ require __DIR__.'/vendor/autoload.php';
 |
 */
 
+$dotenv = Dotenv\Dotenv::create(__DIR__);
+$dotenv->load();
+
 $files = new Illuminate\Filesystem\Filesystem();
 
 $tracker = new JasonLewis\ResourceWatcher\Tracker();
+
+$client = new GuzzleHttp\Client();
+
+try {
+    $logger = new \Monolog\Logger('watcher log',
+                                  [new \Monolog\Handler\StreamHandler(__DIR__ . '/watcher.log', \Monolog\Logger::DEBUG)]);
+} catch (Exception $e) {
+    echo $e->getMessage();
+}
 
 /*
 |--------------------------------------------------------------------------
@@ -50,7 +63,7 @@ $watcher = new JasonLewis\ResourceWatcher\Watcher($tracker, $files);
 |
 */
 
-$listener = $watcher->watch('foo');
+$listener = $watcher->watch(env('DIR'));
 
 /*
 |--------------------------------------------------------------------------
@@ -61,7 +74,21 @@ $listener = $watcher->watch('foo');
 |
 */
 
-$listener->onCreate(function ($resource, $path) {
+$listener->onCreate(function ($resource, $path) use ($files, $client, $logger) {
+    if (!$files->isDirectory($path)) {
+        try {
+            $client->get(env('API_URL'), [
+                'headers' =>
+                    [
+                    ],
+                'query' => [
+                    'resource' => $path,
+                ]
+            ]);
+        } catch (GuzzleHttp\Exception\ConnectException $exception) {
+            $logger->error($exception->getMessage(), ['code' => $exception->getCode()]);
+        }
+    }
     echo "{$path} was created.".PHP_EOL;
 });
 
